@@ -46,8 +46,6 @@ void toServoAngles(float servoAngleOutput[], float x, float y, float z, float ya
   
   Point servo [6];
   Point platform [6];
-  Point platformRotated [6];
-  Point virtualRod [6];
 
   // Start Define geometry
 
@@ -98,6 +96,9 @@ void toServoAngles(float servoAngleOutput[], float x, float y, float z, float ya
 
   // everything above here can be defined once in the beginning (stewart platform geometry definition)
   // everything below here must be in function
+ 
+  Point platformRotated [6];
+  Point virtualRod [6];
   
   Point displacement;           // displacement vector in mm
   displacement.X() = x;
