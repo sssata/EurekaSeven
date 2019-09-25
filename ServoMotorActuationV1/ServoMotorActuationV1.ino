@@ -52,7 +52,6 @@ void toServoAngles(float servoAngleOutput[], float x, float y, float z, float ya
   // Start Define geometry
 
   // set all servo and platform z coord to zero
-  
   for (int i=0; i<6; i++){
     servo[i].Z() = 0;
     platform[i].Z() = 0;
@@ -121,7 +120,7 @@ void toServoAngles(float servoAngleOutput[], float x, float y, float z, float ya
     platformRotated[i] = R * platform[i];
 
     // calculate virtual rod vector
-    virtualRod[i] = height + displacement + platform[i] - servo[i];
+    virtualRod[i] = height + displacement + platformRotated[i] - servo[i];
 
     // get virtual rod length
     virtualRodLength[i] = virtualRod[i].Magnitude();
