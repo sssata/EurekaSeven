@@ -1,4 +1,14 @@
 
+// CONTROLS:
+// W/S : pitch 
+// A/D : roll
+// Q/E : yaw
+// n : reset to neutral
+// t : test mode (input X,Y,Z displacement and yaw, pitch, roll values afterwards)
+
+
+
+
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Geometry.h>
@@ -16,30 +26,35 @@ int servoMin [6] = {140, 140, 0, 0, 0, 0};
 int servoMax [6] = {540, 510, 0, 0, 0, 570};
 int servoZero [6];
 
-String inputString;
+String inputString;           // serial input string
 
-float angleX;
+
+float angleX;                 // Current Set angles
 float angleY;
 float angleZ;
 
-Point dVector;
+Point dVector;                // Current Set displacement
 
-Point servo [6];
-Point platform [6];
+
+
+Point servo [6];              // servo locations
+Point platform [6];           //platform joint locations
 
 Point height;                 // height of platform plane above servo axis plane
 
 const float ROD_LENGTH = 165;
 const float HORN_LENGTH = 17.5;
-const float PLATFORM_HEIGHT = 155;
+const float PLATFORM_HEIGHT = 160;
 const float FIRST_SERVO_X = -65;
 const float FIRST_SERVO_Y = -60;
 const float FIRST_PLATFORM_X = -20;
 const float FIRST_PLATFORM_Y = -80;
 const float MAX_ANGLE = 5 * PI / 180;
 
-float output [6];
+float servoAngleOutput [6];
 float testOutput [6];
+
+boolean isValidAngle;
 
 
 
@@ -53,7 +68,7 @@ void setup() {
 
   Serial.begin(9600); // opens serial port, sets data rate to 9600 bps
   Serial.setTimeout(10); // change default (1000ms) to have faster response time
-  Serial.println("Running example: Servo motor actuation using messaging");
+  Serial.println("Running example: Inverse kinematics calulator");
   pwm.begin();
   pwm.setPWMFreq(60);  // Analog servos run at ~60 Hz updates
 
@@ -98,6 +113,7 @@ void setup() {
   height.Y() = 0.0;
   height.Z() = PLATFORM_HEIGHT;
 
+  // set current state to zero
   dVector.X() = 0;
   dVector.Y() = 0;
   dVector.Z() = 0;
@@ -134,8 +150,6 @@ void setup() {
     Serial.print(platform[i].Z());
   }
 
-
-
 }
 
 
@@ -146,66 +160,72 @@ void loop() {
   if (Serial.available() > 0) {
 
     inputString = Serial.readString();
-    Serial.print("Receieved: ");
+    Serial.print("\nReceieved: ");
     Serial.print(inputString);
 
 
 
     switch (inputString[0]) {
+
+      // test case
       case 't':
-        String inputs [6];
         float inputFloat [6];
         for (int i = 0; i < 6; i++) {
 
           Serial.print("\nEnter input ");
           Serial.print(i);
           Serial.print(": ");
-          while (!Serial.available()) {}
-          inputs[i] = Serial.readString();
-          inputFloat[i] = inputs[i].toFloat();
+          while (!Serial.available()) {} // wait for input
+          inputFloat[i] = Serial.parseFloat();
           Serial.print(inputFloat[i]);
-          inputFloat[i] = inputFloat[i]/180*PI;
+          Serial.print("\n");
         }
 
-        toServoAngles(testOutput, inputFloat[0], inputFloat[1], inputFloat[2], inputFloat[3], inputFloat[4], inputFloat[5]);
+        inputFloat[3] = inputFloat[3]/180*PI;
+        inputFloat[4] = inputFloat[4]/180*PI;
+        inputFloat[5] = inputFloat[5]/180*PI;
+
+        int currentErrorState;
+        currentErrorState = toServoAngles(testOutput, inputFloat[0], inputFloat[1], inputFloat[2], inputFloat[3], inputFloat[4], inputFloat[5]);
+
+        Serial.print("TEST ANGLES\n");
+        printServoState(testOutput, currentErrorState);
         
-        Serial.print("\nTest Servo Angles: ");
-        for (int i = 0; i < 6; i++) {
-
-          Serial.print(testOutput[i]/PI*180);
-          Serial.print(" ");
-        }
 
         break;
-      case 'w':
+      case 'w':           // plus pitch
         angleX = angleX + (1 * PI / 180);
         break;
-      case 's':
+      case 's':           // minus pitch
         angleX = angleX - (1 * PI / 180);
         break;
-      case 'a':
+      case 'a':           // plus roll
         angleY = angleY + (1 * PI / 180);
         break;
-      case 'd':
+      case 'd':           // minus roll
         angleY = angleY - (1 * PI / 180);
         break;
-      case 'e':
-        dVector.Z() = dVector.Z() + 1;
+      case 'e':           // plus yaw
+        angleZ = angleZ + (1 * PI / 180);
         break;
-      case 'q':
-        dVector.Z() = dVector.Z() - 1;
+      case 'q':           // minus yaw
+        angleZ = angleZ - (1 * PI / 180);
+        break;
+      case 'n':           // reset to neutral
+        dVector.X() = 0;
+        dVector.Y() = 0;
+        dVector.Z() = 0;
+        angleX=0;
+        angleY=0;
+        angleZ=0;
         break;
     }
 
+    int currentErrorState;
+    currentErrorState = toServoAngles(servoAngleOutput, dVector.X(), dVector.Y(), dVector.Z(), angleZ, angleX, angleY);
 
-    toServoAngles(output, dVector.X(), dVector.Y(), dVector.Z(), angleZ, angleX, angleY);
-
-    Serial.print("\nServo Angles: ");
-    for (int i = 0; i < 6; i++) {
-
-      Serial.print(output[i]/PI*180);
-      Serial.print(" ");
-    }
+    printServoState(servoAngleOutput, currentErrorState);
+    
   }
 
 }
@@ -214,7 +234,24 @@ void angleToPulseWidth() {
 
 }
 
-void toServoAngles(float servoAngle[], float dx, float dy, float dz, float yaw, float pitch, float roll) {
+void printServoState(float servoAngleInput[], int errorState){
+          Serial.print("\nTest Servo Angles: ");
+        for (int i = 0; i < 6; i++) {
+
+          Serial.print(servoAngleInput[i]/PI*180);
+          Serial.print(" ");
+        }
+        
+        if (errorState != 0){
+          Serial.print ("\nServo angle out of range!\n");
+        } else {
+          Serial.print ("\nServo angles OK\n");
+        }
+}
+
+int toServoAngles(float servoAngle[], float dx, float dy, float dz, float yaw, float pitch, float roll) {
+
+  int errorState = 0;
 
   Point platformRotated [6];
   Point virtualRod [6];
@@ -246,15 +283,17 @@ void toServoAngles(float servoAngle[], float dx, float dy, float dz, float yaw, 
     // get virtual rod length
     virtualRodLength[i] = virtualRod[i].Magnitude();
 
-    Serial.print("\nVirtual rod length:");
-    Serial.print(virtualRodLength[i]);
+    //Serial.print("\nVirtual rod length:");
+    //Serial.print(virtualRodLength[i]);
 
-
-    // calculate servo angle
+    
+    // determine validity and calculate servo angle
     if (virtualRodLength[i] >= rodL + hornL) {
       servoAngle[i] = PI/2;
+      errorState = errorState + 1;
     } else if (virtualRodLength[i] <= rodL - hornL) {
       servoAngle[i] = -PI/2;
+      errorState = errorState + 1;
     } else {
       servoAngle[i] = PI/2 - acos( ((virtualRodLength[i] * virtualRodLength[i]) + (hornL * hornL) - (rodL * rodL)) / (2 * virtualRodLength[i] * hornL) );
     }
@@ -263,7 +302,8 @@ void toServoAngles(float servoAngle[], float dx, float dy, float dz, float yaw, 
     Serial.print(servoAngle[i]);
 
 
-
   }
+
+  return errorState;
 
 }
