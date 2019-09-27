@@ -6,9 +6,6 @@
 // n : reset to neutral
 // t : test mode (input X,Y,Z displacement and yaw, pitch, roll values afterwards)
 
-
-
-
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Geometry.h>
@@ -39,12 +36,13 @@ Point dVector;                // Current Set displacement
 
 Point servo [6];              // servo locations
 Point platform [6];           //platform joint locations
+float hornDirection [6];  // servo arm direction at horizontal
 
 Point height;                 // height of platform plane above servo axis plane
 
 const float ROD_LENGTH = 165;
-const float HORN_LENGTH = 17.5;
-const float PLATFORM_HEIGHT = 160;
+const float HORN_LENGTH = 10;
+const float PLATFORM_HEIGHT = 155;
 const float FIRST_SERVO_X = -65;
 const float FIRST_SERVO_Y = -60;
 const float FIRST_PLATFORM_X = -20;
@@ -96,6 +94,13 @@ void setup() {
   // mirror second platform joint across yz plane
   platform[1].X() = -platform[0].X();
   platform[1].Y() = platform[0].Y();
+
+  hornDirection[0] = 180;
+  hornDirection[1] = 0;
+  hornDirection[2] = 300;
+  hornDirection[3] = 120;
+  hornDirection[4] = 60;
+  hornDirection[5] = 240;
 
   // rotational 120 degree pattern around z axis for servos and platform joints
   for (int i = 1; i <= 2; i++) {
@@ -251,7 +256,7 @@ void printServoState(float servoAngleInput[], int errorState){
 
 int toServoAngles(float servoAngle[], float dx, float dy, float dz, float yaw, float pitch, float roll) {
 
-  int errorState = 0;
+  int errorState = 0;           // error state of the function, returns number of servos out of bounds
 
   Point platformRotated [6];
   Point virtualRod [6];
@@ -286,20 +291,32 @@ int toServoAngles(float servoAngle[], float dx, float dy, float dz, float yaw, f
     //Serial.print("\nVirtual rod length:");
     //Serial.print(virtualRodLength[i]);
 
+    // some angle compensation shit
+    Point hornVector;
+    hornVector.X() = hornL * cos(hornDirection[i]*PI/180);
+    hornVector.Y() = hornL * sin(hornDirection[i]*PI/180);
+    hornVector.Z() = 0;
+    
+    float virtualRodAngle = acos(hornVector.DotProduct(virtualRod[i]) / (hornVector.Magnitude() * virtualRod[i].Magnitude()));
+
+    
     
     // determine validity and calculate servo angle
-    if (virtualRodLength[i] >= rodL + hornL) {
-      servoAngle[i] = PI/2;
+    float cosServoAngle =  ((virtualRodLength[i] * virtualRodLength[i]) + (hornL * hornL) - (rodL * rodL)) / (2 * virtualRodLength[i] * hornL);
+    if (cosServoAngle >= 1) {           //acos has a range of -1 to 1, check if out of bounds
+      servoAngle[i] = virtualRodAngle;
       errorState = errorState + 1;
-    } else if (virtualRodLength[i] <= rodL - hornL) {
-      servoAngle[i] = -PI/2;
+    } else if (cosServoAngle <= -1) {
+      servoAngle[i] = virtualRodAngle - PI;
       errorState = errorState + 1;
     } else {
-      servoAngle[i] = PI/2 - acos( ((virtualRodLength[i] * virtualRodLength[i]) + (hornL * hornL) - (rodL * rodL)) / (2 * virtualRodLength[i] * hornL) );
+      servoAngle[i] = virtualRodAngle - acos(cosServoAngle);
     }
     
     Serial.print("\nServoAngle:");
     Serial.print(servoAngle[i]);
+    Serial.print("\nVirtualRodAngle:");
+    Serial.print(virtualRodAngle*180/PI);
 
 
   }
