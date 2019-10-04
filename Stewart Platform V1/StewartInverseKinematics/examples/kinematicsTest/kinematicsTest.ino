@@ -81,6 +81,7 @@ void loop() {
   /*
     getServoAngles
     Parameters:
+    output array of servo angles (float [6])
     x displacement (float)
     y displacement (float)
     z displacement (float)
